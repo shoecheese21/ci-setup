@@ -7,6 +7,8 @@ on:
 jobs:
   test-and-report:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
 
     steps:
       - name: Checkout repo
@@ -20,10 +22,14 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pytest pytest-xml
 
       - name: Run tests
-        run: pytest --junitxml=report.xml
+        id: pytest
+        continue-on-error: true
+        run: |
+          export PYTHONPATH=$PYTHONPATH:.
+          pytest --junitxml=report.xml -q || true
+
 
       - name: Generate markdown report
         run: python scripts/generate_report.py
@@ -32,8 +38,31 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-report
-          path: report.md
+          path: |
+            report.md
+            report.xml
 
       - name: Publish summary
+        run: cat report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail job if tests failed
         run: |
-          cat report.md >> $GITHUB_STEP_SUMMARY
+          python - <<'PY'
+          import xml.etree.ElementTree as ET, sys, os
+          report_path = 'report.xml'
+          if not os.path.exists(report_path):
+              print('❌ report.xml not found; failing job')
+              sys.exit(1)
+          try:
+              tree = ET.parse(report_path)
+              root = tree.getroot()
+              failures = int(root.attrib.get('failures', 0))
+              errors = int(root.attrib.get('errors', 0))
+              if failures or errors:
+                  print('❌ Some tests failed')
+                  sys.exit(1)
+              print('✅ All tests passed')
+          except Exception as e:
+              print('❌ Failed to parse report.xml:', e)
+              sys.exit(1)
+          PY
