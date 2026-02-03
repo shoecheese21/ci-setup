@@ -1,0 +1,39 @@
+name: Smart CI Reporter
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-and-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-xml
+
+      - name: Run tests
+        run: pytest --junitxml=report.xml
+
+      - name: Generate markdown report
+        run: python scripts/generate_report.py
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: report.md
+
+      - name: Publish summary
+        run: |
+          cat report.md >> $GITHUB_STEP_SUMMARY
